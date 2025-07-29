@@ -89,6 +89,12 @@ in {
 
         java.variables = {
           _JAVA_OPTIONS = "-Djava.util.prefs.userRoot=$XDG_CONFIG_HOME/java";
+          M2_HOME = "$XDG_DATA_HOME/m2";
+          GRADLE_USER_HOME = "$XDG_DATA_HOME/gradle";
+        };
+
+        go.variables = {
+          GOPATH = "$XDG_DATA_HOME/go";
         };
 
         npm = {
@@ -99,65 +105,59 @@ in {
           };
 
           files."npmrc" = {
-            target = "npm/npmrc";
+            target = "npmrc";
             text = ''
-              prefix=$XDG_DATA_HOME}/npm
-              cache=$XDG_CACHE_HOME}/npm
+              prefix=$XDG_DATA_HOME/npm
+              cache=$XDG_CACHE_HOME/npm
               init-module=$XDG_CONFIG_HOME/npm/config/npm-init.js
             '';
           };
         };
-      };
-    };
 
-    templates = mkOption {
-      readOnly = true;
-      type = attrsOf lines;
-      default = {
-        pythonrc =
-          # python
-          ''
-            import os
-            import atexit
-            import readline
-            from pathlib import Path
+        python = {
+          variables = {
+            PYTHONSTARTUP = "/etc/pythonrc";
+          };
 
-            if readline.get_current_history_length() == 0:
+          files."pythonrc" = {
+            target = "pythonrc";
+            text =
+              # python
+              ''
+                import os
+                import atexit
+                import readline
+                from pathlib import Path
 
-                state_home = os.environ.get("XDG_STATE_HOME")
-                if state_home is None:
-                    state_home = Path.home() / ".local" / "state"
-                else:
-                    state_home = Path(state_home)
+                if readline.get_current_history_length() == 0:
+                    state_home = os.environ.get("XDG_STATE_HOME")
+                    if state_home is None:
+                        state_home = Path.home() / ".local" / "state"
+                    else:
+                        state_home = Path(state_home)
 
-                history_path = state_home / "python_history"
-                if history_path.is_dir():
-                    raise OSError(f"'{history_path}' cannot be a directory")
+                    history_path = state_home / "python_history"
+                    if history_path.is_dir():
+                        raise OSError(f"'{history_path}' cannot be a directory")
 
-                history = str(history_path)
+                    history = str(history_path)
 
-                try:
-                    readline.read_history_file(history)
-                except OSError: # Non existent
-                    pass
-
-                def write_history():
                     try:
-                        readline.write_history_file(history)
-                    except OSError:
+                        readline.read_history_file(history)
+                    except OSError: # Non existent
                         pass
 
-                atexit.register(write_history)
-          '';
+                    def write_history():
+                        try:
+                            readline.write_history_file(history)
+                        except OSError:
+                            pass
 
-        npmrc = ''
-          prefix=''${XDG_DATA_HOME}/npm
-          cache=''${XDG_CACHE_HOME}/npm
-          init-module=''${XDG_CONFIG_HOME}/npm/config/npm-init.js
-        '';
+                    atexit.register(write_history)
+              '';
+          };
+        };
       };
-
-      description = "Template files that can be used to link 'magic' configs in place.";
     };
 
     env = let
