@@ -11,9 +11,8 @@ in {
     ../options.nix
   ];
 
-  environment = {
+  config.environment = {
     variables = cfg.env.globalVars;
-    sessionVariables = cfg.env.sessionVars;
     etc =
       mapAttrs (name: value: {
         "${name}".text = value;

@@ -1,9 +1,16 @@
-{lib, ...}: let
+{
+  config,
+  lib,
+  ...
+}: let
   inherit (lib.options) mkOption mkEnableOption;
-  inherit (lib.types) nullOr submodule attrsOf str lines path;
-  programType = submodule ({
+  inherit (lib.types) nullOr submodule attrsOf str lines path oneOf listOf int;
+
+  cfg = config.programs.nixdg-ninja;
+
+  fileType = submodule ({
     name,
-    config,
+    target,
     options,
     ...
   }: {
@@ -15,16 +22,45 @@
           example = false;
         };
 
-      extraVariables = mkOption {
-        type = attrsOf str;
+      target = mkOption {
+        type = str;
+        default = name;
+        defaultText = "name";
+        description = "Target path relative to either {file}`/etc` or {env}`$HOME`";
+      };
+
+      text = mkOption {
+        default = null;
+        type = nullOr lines;
+        description = "Text of the file";
+      };
+    };
+  });
+
+  programType = submodule ({
+    name,
+    config,
+    options,
+    ...
+  }: {
+    options = {
+      enable =
+        mkEnableOption "XDG compliance management for this program"
+        // {
+          default = true;
+          example = false;
+        };
+
+      variables = mkOption {
+        type = attrsOf (oneOf [(listOf (oneOf [int str path])) int str path]);
         default = {};
         description = "XDG-spec compliant variables associated with a given program";
       };
 
-      extraConfig = mkOption {
-        type = lines;
-        default = "";
-        description = "Additional configuration to append to the file source";
+      files = mkOption {
+        type = attrsOf fileType;
+        default = {};
+        description = "Files to be associated with a given program";
       };
 
       # Internal
@@ -34,37 +70,48 @@
         default = name;
         description = "Name of this program";
       };
-
-      path = mkOption {
-        readOnly = true;
-        type = nullOr str;
-        description = ''
-          In the case a program requires any configuration files linked in place
-          this option represents the path **relative to an XDG-compliant directory**
-          such as {env}`$XDG_CONFIG_HOME` for the file to be linked.
-        '';
-      };
-
-      source = mkOption {
-        type = nullOr path;
-        default = null;
-        description = "Path of the source file or directory";
-      };
     };
 
     config = {};
   });
 in {
-  options.nixdg-ninja = {
+  options.programs.nixdg-ninja = {
     enable = mkEnableOption "nixdg-ninja";
 
     programs = mkOption {
       type = attrsOf programType;
       description = "Submodule containing each program supported by nixdg-ninja.";
-      default = {};
+      default = {
+        android.variables = {
+          ANDROID_HOME = "$XDG_DATA_HOME/android";
+          ANDROID_USER_HOME = "$XDG_DATA_HOME/android";
+        };
+
+        java.variables = {
+          _JAVA_OPTIONS = "-Djava.util.prefs.userRoot=$XDG_CONFIG_HOME/java";
+        };
+
+        npm = {
+          variables = {
+            NPM_CONFIG_CACHE = "$XDG_CACHE_HOME/npm";
+            NPM_CONFIG_TMP = "$XDG_RUNTIME_DIR/npm";
+            NPM_CONFIG_USERCONFIG = "$XDG_CONFIG_HOME/npm/config";
+          };
+
+          files."npmrc" = {
+            target = "npm/npmrc";
+            text = ''
+              prefix=$XDG_DATA_HOME}/npm
+              cache=$XDG_CACHE_HOME}/npm
+              init-module=$XDG_CONFIG_HOME/npm/config/npm-init.js
+            '';
+          };
+        };
+      };
     };
 
     templates = mkOption {
+      readOnly = true;
       type = attrsOf lines;
       default = {
         pythonrc =
@@ -113,17 +160,22 @@ in {
       description = "Template files that can be used to link 'magic' configs in place.";
     };
 
-    env = {
-      globalVars = mkOption {
-        type = attrsOf str;
-        default = {};
-        description = "Variables that need to be set globally in a system";
-      };
+    env = let
+      filteredVars = lib.filterAttrs (_: v: (v.enable && v.variables != {})) cfg.programs;
 
-      sessionVars = mkOption {
+      # Combine all enabled variables into a single attrset
+      mergedVars =
+        lib.foldlAttrs (
+          acc: pname: pval:
+            acc // pval.variables
+        ) {}
+        filteredVars;
+    in {
+      globalVars = mkOption {
+        readOnly = true;
         type = attrsOf str;
-        default = {};
-        description = "Variables that need to be set on session login";
+        default = mergedVars;
+        description = "Variables that need to be set globally in a system";
       };
     };
   };
